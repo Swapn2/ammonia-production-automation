@@ -1,6 +1,8 @@
 import win32com.client as win32
 import pandas as pd
 import time
+import numpy as np
+from scipy.stats.qmc import Sobol
 
 def OpenHysys(hysys_file_path):
     print("Opening HYSYS...")
@@ -14,11 +16,11 @@ def GetInitialConditions(hysysCase, mode):
     spreadsheet = hysysCase.Flowsheet.Operations.Item("SPRDSHT-1")
     try:
         base_data = {
-            "Mole Fraction of Nitrogen (Reactor-feed) [-]": spreadsheet.Cell("D2").CellValue,
-            "Mole Fraction of Nitrogen (R1-out) [-]": spreadsheet.Cell("D4").CellValue,
-            "Mole Fraction of Hydrogen (Reactor-feed) [-]": spreadsheet.Cell("F2").CellValue,
-            "Mole Fraction of Hydrogen (R1-out) [-]": spreadsheet.Cell("F4").CellValue,
-            "Mole Fraction of Ammonia (Reactor-feed) [-]": spreadsheet.Cell("E2").CellValue,
+            "Mole Fraction of Nitrogen (Reactor-feed)": spreadsheet.Cell("D2").CellValue,
+            "Mole Fraction of Nitrogen (R1-out) ": spreadsheet.Cell("D4").CellValue,
+            "Mole Fraction of Hydrogen (Reactor-feed) ": spreadsheet.Cell("F2").CellValue,
+            "Mole Fraction of Hydrogen (R1-out) ": spreadsheet.Cell("F4").CellValue,
+            "Mole Fraction of Ammonia (Reactor-feed) ": spreadsheet.Cell("E2").CellValue,
         }
         
         if mode == "pressure":
@@ -49,6 +51,12 @@ def SaveToExcel(sheet_name, base_data, results):
     
     print(f"Output saved to {excel_path} in sheet {sheet_name}")
 
+def GenerateSobolSamples(start, end, num_samples):
+    sobol = Sobol(d=1, scramble=True)
+    samples = sobol.random_base2(m=int(np.log2(num_samples)))
+    scaled_samples = start + (end - start) * samples.flatten()
+    return scaled_samples
+
 def UpdatePressure(hysysCase):
     reactor_feed = hysysCase.Flowsheet.MaterialStreams.Item("Reactor-feed")
     ammonia = hysysCase.Flowsheet.MaterialStreams.Item("ammonia")
@@ -60,12 +68,14 @@ def UpdatePressure(hysysCase):
     
     start_pressure = float(input("Enter starting pressure (kPa): "))
     end_pressure = float(input("Enter ending pressure (kPa): "))
-    interval = float(input("Enter interval for pressure (kPa): "))
+    num_samples = int(input("Enter number of Sobol samples: "))
     
     sheet_name = f"Pressure_{int(start_pressure)}_{int(end_pressure)}"
     results = []
     
-    for new_pressure in range(int(start_pressure), int(end_pressure) + 1, int(interval)):
+    pressure_values = GenerateSobolSamples(start_pressure, end_pressure, num_samples)
+    
+    for new_pressure in pressure_values:
         reactor_feed.Pressure = new_pressure
         ammonia.Pressure = new_pressure
         time.sleep(1)
@@ -79,7 +89,7 @@ def UpdatePressure(hysysCase):
         results.append({
             "Reactor-feed Pressure [kPa]": new_pressure,
             "Ammonia Pressure [kPa]": new_pressure,
-            "Mole Fraction of Ammonia in R1-out [-]": mole_fraction_ammonia
+            "Mole Fraction of Ammonia in R1-out": mole_fraction_ammonia
         })
     
     SaveToExcel(sheet_name, base_data, results)
@@ -95,12 +105,14 @@ def UpdateTemperature(hysysCase):
     
     start_temp = float(input("Enter starting temperature (°C): "))
     end_temp = float(input("Enter ending temperature (°C): "))
-    interval = float(input("Enter interval for temperature (°C): "))
+    num_samples = int(input("Enter number of Sobol samples: "))
     
     sheet_name = f"Temperature_{int(start_temp)}_{int(end_temp)}"
     results = []
     
-    for new_temp in range(int(start_temp), int(end_temp) + 1, int(interval)):
+    temp_values = GenerateSobolSamples(start_temp, end_temp, num_samples)
+    
+    for new_temp in temp_values:
         reactor_feed.Temperature = new_temp
         ammonia.Temperature = new_temp
         time.sleep(1)
@@ -114,7 +126,7 @@ def UpdateTemperature(hysysCase):
         results.append({
             "Reactor-feed Temperature [°C]": new_temp,
             "Ammonia Temperature [°C]": new_temp,
-            "Mole Fraction of Ammonia in R1-out [-]": mole_fraction_ammonia
+            "Mole Fraction of Ammonia in R1-out ": mole_fraction_ammonia
         })
     
     SaveToExcel(sheet_name, base_data, results)
